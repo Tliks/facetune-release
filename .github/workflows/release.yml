@@ -1,0 +1,137 @@
+name: Build Release and Deploy Listing
+
+on:
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      package_name: ${{ steps.name.outputs.value }}
+    env:
+      packagePath: Tliks-FaceTune
+    steps:
+      # Step 1: Checkout the repository where the workflow is running (B)
+      - name: Checkout local repository
+        uses: actions/checkout@v4
+
+      # Step 2: Clone the external repository (A) into a specific directory
+      - name: Checkout external repository Tliks/FaceTune
+        id: checkout-a
+        uses: actions/checkout@v4
+        with:
+          repository: Tliks/FaceTune
+          path: ${{ env.packagePath }}
+          token: ${{ secrets.DISPATCH_TOKEN }}
+
+      # Step 3: Get the Package version from the package.json file of repository A
+      - name: Get Version
+        id: version
+        uses: zoexx/github-action-json-file-properties@b9f36ce6ee6fe2680cd3c32b2c62e22eade7e590
+        with:
+          file_path: "${{ env.packagePath }}/package.json"
+          prop_path: "version"
+
+      - name: Get Package Name
+        id: name
+        uses: zoexx/github-action-json-file-properties@b9f36ce6ee6fe2680cd3c32b2c62e22eade7e590
+        with:
+          file_path: "${{ env.packagePath }}/package.json"
+          prop_path: "name"
+
+      - name: Set Environment Variables
+        run: |
+          echo "zipFile=${{ steps.name.outputs.value }}-${{ steps.version.outputs.value }}".zip >> $GITHUB_ENV
+          echo "version=${{ steps.version.outputs.value }}" >> $GITHUB_ENV
+
+      # Step 4: Zip the contents of repository A
+      - name: Create Package Zip
+        working-directory: "${{ env.packagePath }}"
+        run: zip -r "${{ github.workspace }}/${{ env.zipFile }}" . -x '.*' '*/.*'
+
+      # Step 5: Make a release tag on repository A
+      - name: Create Tag on Tliks/FaceTune
+        id: tag_version
+        uses: rickstaa/action-create-tag@88dbf7ff6fe2405f8e8f6c6fdfd78829bc631f83
+        with:
+          target_commitish: ${{ steps.checkout-a.outputs.sha }}
+          repository: Tliks/FaceTune
+          tag: "${{ env.version }}"
+          beta: ${{ github.ref == 'refs/heads/dev' }}
+          token: ${{ secrets.DISPATCH_TOKEN }}
+
+      # Step 6: Publish the Release to repository B
+      - name: Make Release on local repository
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844
+        with:
+          files: |
+            ${{ env.zipFile }}
+            ${{ env.packagePath }}/package.json
+          tag_name: ${{ env.version }}
+          prerelease: ${{ github.ref == 'refs/heads/dev' }}
+
+  build-listing:
+    name: Build and Deploy Listing
+    needs: build # This job runs only after the 'build' job succeeds
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    env:
+      listPublishDirectory: Website
+      pathToCi: ci
+    steps:
+      # Checkout Local Repository
+      - name: Checkout Local Repository
+        uses: actions/checkout@v4
+
+      # Checkout Automation Repository without removing prior checkouts
+      - name: Checkout Automation Repository
+        uses: actions/checkout@v4
+        with:
+          repository: vrchat-community/package-list-action
+          path: ${{ env.pathToCi }}
+          clean: false
+
+      # Load cached data from previous runs
+      - name: Restore Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.pathToCi }}/.nuke/temp
+            ~/.nuget/packages
+          key: ${{ runner.os }}-${{ hashFiles('**/global.json', '**/*.csproj') }}
+
+      # Build Package Version Listing with Nuke
+      - name: Build Package Version Listing
+        run: ${{ env.pathToCi }}/build.cmd BuildRepoListing --root ${{ env.pathToCi }} --list-publish-directory $GITHUB_WORKSPACE/${{ env.listPublishDirectory }} --current-package-name ${{ needs.build.outputs.package_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Prepare for GitHub Pages deployment
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      # Upload the VPM Listing Website to GitHub Pages artifacts
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.listPublishDirectory }}
+
+      # Deploy the uploaded VPM Listing Website to GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
