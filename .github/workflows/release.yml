@@ -120,6 +120,19 @@ jobs:
         run: ${{ env.pathToCi }}/build.cmd BuildRepoListing --root ${{ env.pathToCi }} --list-publish-directory $GITHUB_WORKSPACE/${{ env.listPublishDirectory }} --current-package-name ${{ needs.build.outputs.package_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      # Simplify Website for Redirect
+      - name: Simplify Website for Redirect
+        working-directory: ${{ env.listPublishDirectory }}
+        run: |
+          # Keep only the essential files
+          find . -maxdepth 1 -type f ! -name 'index.json' ! -name 'favicon.ico' -delete
+          
+          # Create a new index.html that redirects to index.json
+          echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=./index.json"></head><body><p>Redirecting to repository listing...</p></body></html>' > index.html
+          
+          echo "Simplified website content:"
+          ls -la
 
       # Prepare for GitHub Pages deployment
       - name: Setup Pages
