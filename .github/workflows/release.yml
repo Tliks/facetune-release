@@ -128,8 +128,20 @@ jobs:
           # Keep only the essential files
           find . -maxdepth 1 -type f ! -name 'index.json' ! -name 'favicon.ico' -delete
           
-          # Create a new index.html that redirects to index.json
-          echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=./index.json"></head><body><p>Redirecting to repository listing...</p></body></html>' > index.html
+          # Dynamically construct the VPM repo URL based on the current repository
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          JSON_URL="https://${{ github.repository_owner }}.github.io/${REPO_NAME}/index.json"
+          VCC_URL="vcc://vpm/addRepo?url=${JSON_URL}"
+
+          # Create a new index.html with the dynamic VCC redirect URL
+          cat <<EOF > index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="refresh" content="0; URL='${VCC_URL}'">
+</head>
+</html>
+EOF
           
           echo "Simplified website content:"
           ls -la
