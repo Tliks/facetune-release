@@ -134,14 +134,7 @@ jobs:
           VCC_URL="vcc://vpm/addRepo?url=${JSON_URL}"
 
           # Create a new index.html with the dynamic VCC redirect URL
-          cat <<EOF > index.html
-<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="refresh" content="0; URL='${VCC_URL}'">
-</head>
-</html>
-EOF
+          echo "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0; URL='${VCC_URL}'\"></head></html>" > index.html
           
           echo "Simplified website content:"
           ls -la
